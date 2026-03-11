@@ -6,7 +6,7 @@
   "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
     "https://www.linkedin.com/*",
-    "https://tailr-production.up.railway.app/*"
+    "https://tailr-proxy.fly.dev/*"
   ],
   "action": {
     "default_popup": "popup.html",

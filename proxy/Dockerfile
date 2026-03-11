@@ -1,9 +1,9 @@
-# Build stage — context is the repo root (outreach-generator/)
-FROM golang:1.22-alpine AS builder
+# Build stage
+FROM golang:alpine AS builder
 WORKDIR /app
-COPY proxy/go.mod .
+COPY go.mod .
 RUN go mod download
-COPY proxy/ .
+COPY . .
 RUN go build -o proxy api.go
 
 # Run stage
