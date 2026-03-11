@@ -6,7 +6,7 @@
   "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
     "https://www.linkedin.com/*",
-    "http://localhost:8080/*"
+    "https://tailr-production.up.railway.app/*"
   ],
   "action": {
     "default_popup": "popup.html",
