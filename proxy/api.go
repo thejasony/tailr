@@ -306,6 +306,29 @@ func maskURL(rawURL, param string) string {
 	return u.String()
 }
 
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+
+// corsMiddleware adds CORS headers so Chrome extensions (and localhost) can call
+// the deployed proxy. Chrome extensions send Origin: chrome-extension://<id>.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if strings.HasPrefix(origin, "chrome-extension://") ||
+			strings.HasPrefix(origin, "http://localhost") ||
+			strings.HasPrefix(origin, "https://localhost") {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers",
+				"Content-Type, X-Team-Token, anthropic-version, anthropic-beta")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 func registerRoutes(mux *http.ServeMux) {
@@ -344,7 +367,7 @@ func main() {
 	registerRoutes(mux)
 
 	slog.Info("tailr proxy server starting", "port", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := http.ListenAndServe(":"+port, corsMiddleware(mux)); err != nil {
 		slog.Error("server failed", "error", err)
 		os.Exit(1)
 	}
