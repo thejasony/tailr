@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Outreach Generator — Settings</title>
+  <title>Tailr — Settings</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -43,9 +43,8 @@
       display: block; font-size: 12px; font-weight: 500;
       color: #94a3b8; margin-bottom: 6px;
     }
-    .field-row { display: flex; gap: 8px; }
     .field input {
-      flex: 1;
+      width: 100%;
       background: #0f172a; border: 1px solid #334155;
       border-radius: 9px; padding: 9px 12px;
       color: #e2e8f0; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace;
@@ -64,8 +63,6 @@
     .field .hint {
       font-size: 11px; color: #475569; margin-top: 5px; line-height: 1.5;
     }
-    .field .hint a { color: #60a5fa; text-decoration: none; }
-    .field .hint a:hover { text-decoration: underline; }
 
     .btn-save {
       width: 100%; padding: 11px;
@@ -108,44 +105,23 @@
     </div>
 
     <div class="card">
-      <h2>API Keys</h2>
-      <p class="desc">Your keys are stored locally in Chrome and never sent anywhere except directly to each respective API.</p>
+      <h2>Team Access</h2>
+      <p class="desc">Enter the team token provided by your admin. This is the only credential you need — all API keys are managed server-side.</p>
 
       <div class="field">
-        <label>Anthropic API Key <span style="color:#ef4444">*</span></label>
-        <input type="password" id="anthropic-key" placeholder="sk-ant-api03-..." autocomplete="off" />
-        <div class="key-status unset" id="anthropic-status">Not set</div>
-        <div class="hint">
-          Get yours at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>
-        </div>
+        <label>Team Token <span style="color:#ef4444">*</span></label>
+        <input type="password" id="team-token" placeholder="tailr-team-..." autocomplete="off" />
+        <div class="key-status unset" id="token-status">Not set</div>
+        <div class="hint">Ask your Tailr admin for this token.</div>
       </div>
 
-      <div class="field">
-        <label>Tavily API Key <span style="color:#ef4444">*</span></label>
-        <input type="password" id="tavily-key" placeholder="tvly-..." autocomplete="off" />
-        <div class="key-status unset" id="tavily-status">Not set</div>
-        <div class="hint">
-          Free tier available at <a href="https://app.tavily.com" target="_blank">app.tavily.com</a>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>YouTube Data API Key <span style="color:#94a3b8" style="font-weight:400">(optional)</span></label>
-        <input type="password" id="youtube-key" placeholder="AIza..." autocomplete="off" />
-        <div class="key-status unset" id="youtube-status">Not set — CEO themes will use defaults</div>
-        <div class="hint">
-          <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> → Enable "YouTube Data API v3" → Create API Key
-        </div>
-      </div>
-
-      <button class="btn-save" id="btn-save">Save API Keys</button>
-      <div class="toast" id="toast">Keys saved successfully!</div>
+      <button class="btn-save" id="btn-save">Save</button>
+      <div class="toast" id="toast">Saved!</div>
     </div>
 
     <div class="note">
-      <strong>Security note:</strong> API keys are stored in <code>chrome.storage.local</code> on your device only.
-      All API calls (Anthropic, Tavily, YouTube) are made directly from your browser to each service.
-      No data is sent to any third-party server.
+      <strong>Security note:</strong> Your team token is stored in <code>chrome.storage.local</code> on your device only.
+      All API requests are proxied through your team's secure backend — no API keys are stored in the extension.
     </div>
   </div>
   <script src="options.js"></script>

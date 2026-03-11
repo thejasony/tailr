@@ -6,13 +6,11 @@
   "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
     "https://www.linkedin.com/*",
-    "https://api.anthropic.com/*",
-    "https://api.tavily.com/*",
-    "https://www.googleapis.com/*"
+    "http://localhost:8080/*"
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Outreach Generator",
+    "default_title": "Tailr",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

@@ -1,3 +1,8 @@
+// ─── Proxy config ─────────────────────────────────────────────────────────────
+
+// Change this to your deployed proxy URL (e.g. https://tailr-proxy.fly.dev)
+const PROXY_BASE = 'http://localhost:8080';
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 const state = {
@@ -28,14 +33,14 @@ function setStep(id, status) {
 
 function getKeys() {
   return new Promise(resolve => {
-    chrome.storage.local.get(['anthropicKey', 'tavilyKey', 'youtubeKey'], resolve);
+    chrome.storage.local.get(['teamToken'], resolve);
   });
 }
 
-// ─── API: Anthropic ───────────────────────────────────────────────────────────
+// ─── API: Anthropic (via proxy) ───────────────────────────────────────────────
 
 async function callClaude({ system, user, maxTokens = 512 }) {
-  const keys = await getKeys();
+  const { teamToken } = await getKeys();
   const body = {
     model: 'claude-sonnet-4-6',
     max_tokens: maxTokens,
@@ -43,19 +48,18 @@ async function callClaude({ system, user, maxTokens = 512 }) {
   };
   if (system) body.system = system;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(`${PROXY_BASE}/api/proxy/anthropic/v1/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': keys.anthropicKey,
       'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
+      'X-Team-Token': teamToken || '',
     },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Anthropic error ${res.status}`);
+    throw new Error(err.error?.message || `Proxy error ${res.status}`);
   }
   const data = await res.json();
   return data.content[0].text;
@@ -66,15 +70,18 @@ async function claudeJson(prompt, maxTokens = 512) {
   return raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
 }
 
-// ─── API: Tavily ──────────────────────────────────────────────────────────────
+// ─── API: Tavily (via proxy) ──────────────────────────────────────────────────
 
 async function tavilySearch(query) {
-  const keys = await getKeys();
-  if (!keys.tavilyKey) return '';
-  const res = await fetch('https://api.tavily.com/search', {
+  const { teamToken } = await getKeys();
+  const res = await fetch(`${PROXY_BASE}/api/proxy/tavily/search`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ api_key: keys.tavilyKey, query, max_results: 5, search_depth: 'basic' }),
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Team-Token': teamToken || '',
+    },
+    // Note: no api_key here — the proxy injects it server-side
+    body: JSON.stringify({ query, max_results: 5, search_depth: 'basic' }),
   });
   if (!res.ok) return '';
   const data = await res.json();
@@ -84,13 +91,20 @@ async function tavilySearch(query) {
     .slice(0, 4000);
 }
 
-// ─── API: YouTube ─────────────────────────────────────────────────────────────
+// ─── API: YouTube (via proxy) ─────────────────────────────────────────────────
 
 async function youtubeSearch(query) {
-  const keys = await getKeys();
-  if (!keys.youtubeKey) return [];
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&maxResults=3&type=video&key=${keys.youtubeKey}`;
-  const res = await fetch(url);
+  const { teamToken } = await getKeys();
+  const params = new URLSearchParams({
+    part: 'snippet',
+    q: query,
+    maxResults: '3',
+    type: 'video',
+    // Note: no key= here — the proxy appends it server-side
+  });
+  const res = await fetch(`${PROXY_BASE}/api/proxy/youtube/search?${params}`, {
+    headers: { 'X-Team-Token': teamToken || '' },
+  });
   if (!res.ok) return [];
   const data = await res.json();
   return (data.items || []).map(item => ({
@@ -288,7 +302,6 @@ function renderOutput(result) {
   const words = result.message.split(/\s+/).filter(Boolean).length;
   document.getElementById('output-meta').textContent = `${words} words · ${result.message.length} characters`;
 
-  // Research panel
   const panel = document.getElementById('research-panel');
   const r = result.research;
 
@@ -348,14 +361,12 @@ function renderOutput(result) {
 // ─── Main flow ────────────────────────────────────────────────────────────────
 
 async function init() {
-  // Check API keys first
-  const keys = await getKeys();
-  if (!keys.anthropicKey) {
+  const { teamToken } = await getKeys();
+  if (!teamToken) {
     showView('view-no-keys');
     return;
   }
 
-  // Check if current tab is a LinkedIn profile
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const isLinkedIn = tab?.url?.includes('linkedin.com/in/');
 
@@ -364,19 +375,16 @@ async function init() {
     return;
   }
 
-  // Show form and start parsing
   showView('view-form');
   document.getElementById('parse-progress').style.display = 'flex';
   document.getElementById('form-fields').style.display = 'none';
 
   try {
-    // Get profile text from content script
     const response = await chrome.tabs.sendMessage(tab.id, { action: 'getProfileText' });
     if (!response?.ok) throw new Error('Could not read profile text');
 
     state.profileText = response.text;
 
-    // Parse with Claude
     document.getElementById('parse-progress-text').textContent = 'Parsing profile with Claude...';
     const cleaned = await claudeJson(`You are a LinkedIn profile parser. Extract structured information from raw LinkedIn profile text.
 Return ONLY valid JSON:
@@ -397,7 +405,6 @@ ${response.text}`);
     document.getElementById('parse-progress').style.display = 'none';
     document.getElementById('form-fields').style.display = 'block';
   } catch (err) {
-    // If parsing fails, show empty editable form
     document.getElementById('parse-progress').style.display = 'none';
     document.getElementById('form-fields').style.display = 'block';
     const errEl = document.getElementById('form-error');
@@ -422,7 +429,6 @@ async function runGenerate() {
   showView('view-generating');
   document.getElementById('form-error').style.display = 'none';
 
-  // ── Parallel research ──
   setStep('step-glassdoor', 'active');
   setStep('step-size', 'active');
   setStep('step-news', 'active');
@@ -440,7 +446,6 @@ async function runGenerate() {
   setStep('step-news', 'done');
   setStep('step-youtube', 'done');
 
-  // ── Process research in parallel ──
   const [glassdoorThemes, sizeResult, appliedFacts, ceoThemes] = await Promise.all([
     extractNegativeThemes(profile.currentCompany, glassdoorText),
     extractCompanySize(profile.currentCompany, companySizeText),
@@ -448,7 +453,6 @@ async function runGenerate() {
     extractCeoThemes(youtubeVideos),
   ]);
 
-  // ── Generate message ──
   setStep('step-message', 'active');
 
   const research = {
@@ -530,7 +534,6 @@ document.getElementById('btn-setup-keys')?.addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });
 
-// ── Re-check vague fields on location input change ──
 document.getElementById('f-location').addEventListener('input', e => {
   const vague = isVagueLocation(e.target.value);
   e.target.classList.toggle('vague', vague);
