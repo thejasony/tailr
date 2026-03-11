@@ -1,7 +1,7 @@
 // ─── Proxy config ─────────────────────────────────────────────────────────────
 
 // Change this to your deployed proxy URL (e.g. https://tailr-proxy.fly.dev)
-const PROXY_BASE = 'http://localhost:8080';
+const PROXY_BASE = 'https://tailr-production.up.railway.app';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
