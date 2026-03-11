@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Outreach Generator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 420px;
+      min-height: 200px;
+      max-height: 620px;
+      overflow-y: auto;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header-icon {
+      width: 28px; height: 28px;
+      background: #2563eb;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .header-title { font-weight: 600; font-size: 13px; color: #f1f5f9; }
+    .header-sub { font-size: 11px; color: #64748b; }
+    .header-settings {
+      margin-left: auto;
+      background: none; border: none; cursor: pointer;
+      color: #64748b; padding: 4px; border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .header-settings:hover { color: #94a3b8; background: #1e293b; }
+
+    /* ── Content ── */
+    .content { padding: 14px 16px; }
+
+    /* ── Views ── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* Loading */
+    .loading-wrap {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; padding: 40px 0; color: #64748b;
+    }
+    .spinner {
+      width: 22px; height: 22px;
+      border: 2px solid #1e293b;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* No keys / Not LinkedIn */
+    .state-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+    .state-card .icon { font-size: 28px; margin-bottom: 8px; }
+    .state-card h3 { color: #f1f5f9; font-size: 14px; margin-bottom: 6px; }
+    .state-card p { color: #64748b; font-size: 12px; line-height: 1.6; }
+
+    /* ── Form ── */
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .section-label {
+      display: flex; align-items: center; gap: 7px;
+      margin-bottom: 10px;
+    }
+    .badge {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 8px; border-radius: 99px;
+      border: 1px solid;
+    }
+    .badge-blue { background: #1d4ed820; color: #60a5fa; border-color: #1d4ed840; }
+    .badge-green { background: #16a34a20; color: #4ade80; border-color: #16a34a40; }
+    .badge-purple { background: #7c3aed20; color: #a78bfa; border-color: #7c3aed40; }
+    .badge-amber { background: #d9770620; color: #fbbf24; border-color: #d9770640; }
+    .section-title { font-weight: 600; font-size: 12px; color: #f1f5f9; }
+
+    /* Parsing progress bar */
+    .parse-progress {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; color: #64748b;
+      padding: 8px 0;
+    }
+
+    /* Field grid */
+    .fields-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { font-size: 11px; color: #64748b; font-weight: 500; }
+    .field input {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 7px 10px;
+      color: #e2e8f0;
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+    .field input:focus { border-color: #3b82f6; }
+    .field input.vague { border-color: #d97706; background: #451a0310; }
+    .field-warn {
+      font-size: 10px; color: #fbbf24;
+      display: flex; align-items: center; gap: 4px;
+    }
+
+    /* Location options */
+    .location-options {
+      background: #451a0320;
+      border: 1px solid #92400e40;
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 8px;
+    }
+    .location-options p {
+      font-size: 11px; color: #fbbf24; font-weight: 500; margin-bottom: 8px;
+    }
+    .radio-option {
+      display: flex; align-items: flex-start; gap: 8px;
+      margin-bottom: 6px; cursor: pointer;
+    }
+    .radio-option:last-child { margin-bottom: 0; }
+    .radio-option input[type=radio] { margin-top: 2px; accent-color: #3b82f6; flex-shrink: 0; }
+    .radio-option span { font-size: 11px; color: #cbd5e1; line-height: 1.5; }
+    .radio-option span strong { color: #f1f5f9; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      border: none; border-radius: 10px; cursor: pointer;
+      font-weight: 600; font-size: 12px; transition: all 0.15s;
+      width: 100%; padding: 10px;
+    }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-secondary { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; }
+    .btn-secondary:hover:not(:disabled) { background: #334155; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-sm {
+      padding: 6px 12px; width: auto; font-size: 11px; border-radius: 8px;
+    }
+    .btn-copied { background: #16a34a20 !important; color: #4ade80 !important; border-color: #16a34a40 !important; }
+
+    /* Settings button in footer */
+    .open-settings {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #2563eb; color: white;
+      border: none; border-radius: 8px; cursor: pointer;
+      font-size: 12px; font-weight: 600; padding: 8px 14px;
+      margin-top: 12px;
+    }
+    .open-settings:hover { background: #1d4ed8; }
+
+    /* ── Generating ── */
+    .generating-wrap {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 12px;
+      padding: 30px 0;
+    }
+    .progress-steps { width: 100%; }
+    .progress-step {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 0;
+      font-size: 11px; color: #64748b;
+    }
+    .progress-step.done { color: #4ade80; }
+    .progress-step.active { color: #93c5fd; }
+    .step-icon { width: 16px; text-align: center; flex-shrink: 0; }
+
+    /* ── Output ── */
+    .message-box {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 12px;
+      line-height: 1.8;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      max-height: 220px;
+      overflow-y: auto;
+      margin-bottom: 8px;
+    }
+    .output-meta {
+      font-size: 10px; color: #475569;
+      margin-bottom: 10px;
+    }
+    .output-actions {
+      display: flex; gap: 6px; margin-bottom: 10px;
+    }
+
+    /* Research collapsible */
+    .research-toggle {
+      width: 100%;
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; color: #94a3b8; font-size: 12px; font-weight: 500;
+      transition: background 0.15s;
+    }
+    .research-toggle:hover { background: #334155; }
+    .research-toggle svg { transition: transform 0.2s; }
+    .research-toggle.open svg { transform: rotate(180deg); }
+
+    .research-panel {
+      background: #1e293b; border: 1px solid #334155;
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      padding: 12px 14px;
+      display: none;
+    }
+    .research-panel.open { display: block; }
+
+    .research-block { margin-bottom: 12px; }
+    .research-block:last-child { margin-bottom: 0; }
+    .research-block-title {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 600; color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    .research-item {
+      font-size: 11px; color: #94a3b8;
+      padding: 2px 0 2px 12px;
+      border-left: 2px solid #334155;
+      margin-bottom: 3px;
+      line-height: 1.5;
+    }
+    .yt-video {
+      background: #0f172a; border-radius: 7px;
+      padding: 8px; margin-bottom: 5px;
+    }
+    .yt-video-title { font-size: 11px; font-weight: 500; color: #e2e8f0; }
+    .yt-video-desc { font-size: 10px; color: #64748b; margin-top: 2px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+    /* ── Error ── */
+    .error-msg {
+      background: #450a0a20; border: 1px solid #7f1d1d60;
+      border-radius: 8px; padding: 10px 12px;
+      font-size: 11px; color: #fca5a5; margin-top: 8px;
+      line-height: 1.6;
+    }
+
+    /* Regenerate row */
+    .regenerate-row {
+      display: flex; gap: 6px; margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-icon">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M1 10.5L5 6.5L8 9.5L12 4.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="12" cy="3" r="1.5" fill="white"/>
+      </svg>
+    </div>
+    <div>
+      <div class="header-title">Tailr</div>
+      <div class="header-sub">Personalized Outreach</div>
+    </div>
+    <button class="header-settings" id="btn-open-settings" title="API Keys">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+        <circle cx="7.5" cy="7.5" r="2" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M7.5 1v1.5M7.5 12.5V14M14 7.5h-1.5M2.5 7.5H1M12 3l-1.1 1.1M4.1 10.9L3 12M12 12l-1.1-1.1M4.1 4.1L3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="content">
+
+    <!-- VIEW: Loading -->
+    <div id="view-loading" class="view active">
+      <div class="loading-wrap">
+        <div class="spinner"></div>
+        <span>Detecting profile...</span>
+      </div>
+    </div>
+
+    <!-- VIEW: No API Keys -->
+    <div id="view-no-keys" class="view">
+      <div class="state-card">
+        <div class="icon">🔑</div>
+        <h3>API Keys Required</h3>
+        <p>Add your Anthropic and Tavily API keys to get started.</p>
+        <button class="open-settings" id="btn-setup-keys">
+          Open Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW: Not on LinkedIn profile -->
+    <div id="view-not-linkedin" class="view">
+      <div class="state-card">
+        <div class="icon">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <rect width="32" height="32" rx="6" fill="#0077B5"/>
+            <text x="7" y="23" font-size="18" font-weight="900" fill="white" font-family="sans-serif">in</text>
+          </svg>
+        </div>
+        <h3 style="margin-top:8px">Navigate to a LinkedIn Profile</h3>
+        <p>Open any LinkedIn profile page (linkedin.com/in/...) and click this extension.</p>
+      </div>
+    </div>
+
+    <!-- VIEW: Form (profile fields + generate) -->
+    <div id="view-form" class="view">
+      <!-- Parsing indicator shown while Claude parses -->
+      <div id="parse-progress" class="parse-progress" style="display:none">
+        <div class="spinner" style="width:14px;height:14px;border-width:1.5px"></div>
+        <span id="parse-progress-text">Parsing profile with Claude...</span>
+      </div>
+
+      <div id="form-fields" style="display:none">
+        <div class="section">
+          <div class="section-label">
+            <span class="badge badge-green">Detected</span>
+            <span class="section-title">Profile</span>
+          </div>
+          <div class="fields-grid">
+            <div class="field full">
+              <label>Full Name</label>
+              <input type="text" id="f-name" placeholder="Jane Smith" />
+            </div>
+            <div class="field full">
+              <label>Current Title</label>
+              <input type="text" id="f-title" placeholder="Senior Software Engineer" />
+            </div>
+            <div class="field">
+              <label>Company</label>
+              <input type="text" id="f-company" placeholder="Google" />
+              <div class="field-warn" id="warn-company" style="display:none">
+                ⚠ Verify company name
+              </div>
+            </div>
+            <div class="field">
+              <label>Location</label>
+              <input type="text" id="f-location" placeholder="San Francisco, CA" />
+              <div class="field-warn" id="warn-location" style="display:none">
+                ⚠ Location is vague
+              </div>
+            </div>
+          </div>
+
+          <!-- Location options (shown when location is vague) -->
+          <div id="location-options" class="location-options" style="display:none">
+            <p>How should we handle the vague location?</p>
+            <label class="radio-option">
+              <input type="radio" name="location-opt" value="exclude" checked />
+              <span><strong>Exclude</strong> location references from the message.</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="location-opt" value="include_disclaimer" />
+              <span><strong>Include disclaimer:</strong> "I couldn't find your exact location from LinkedIn, but this role is based in Sunnyvale, CA."</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="form-error" class="error-msg" style="display:none"></div>
+
+        <button class="btn btn-primary" id="btn-generate">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M2 6.5h9M6.5 2l4.5 4.5-4.5 4.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Generate Outreach Message
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW: Generating (progress steps) -->
+    <div id="view-generating" class="view">
+      <div class="generating-wrap">
+        <div class="spinner"></div>
+        <div class="progress-steps" id="progress-steps">
+          <div class="progress-step" id="step-glassdoor">
+            <span class="step-icon">○</span> Fetching employee sentiment
+          </div>
+          <div class="progress-step" id="step-size">
+            <span class="step-icon">○</span> Looking up company size
+          </div>
+          <div class="progress-step" id="step-news">
+            <span class="step-icon">○</span> Finding Applied Intuition news
+          </div>
+          <div class="progress-step" id="step-youtube">
+            <span class="step-icon">○</span> Searching CEO videos
+          </div>
+          <div class="progress-step" id="step-message">
+            <span class="step-icon">○</span> Crafting your message
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW: Output -->
+    <div id="view-output" class="view">
+      <div class="section" style="padding:12px">
+        <div class="section-label">
+          <span class="badge badge-purple">Output</span>
+          <span class="section-title">Generated Message</span>
+        </div>
+        <div class="message-box" id="message-text"></div>
+        <div class="output-meta" id="output-meta"></div>
+        <div class="output-actions">
+          <button class="btn btn-secondary btn-sm" id="btn-copy">
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1" stroke="currentColor" stroke-width="1.1"/>
+              <path d="M2 7H1.5a1 1 0 0 1-1-1V1.5a1 1 0 0 1 1-1H6a1 1 0 0 1 1 1V2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+            </svg>
+            Copy
+          </button>
+        </div>
+
+        <!-- Research collapsible -->
+        <button class="research-toggle" id="research-toggle">
+          <span>Research Used</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="research-panel" id="research-panel">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="regenerate-row">
+        <button class="btn btn-secondary" id="btn-back" style="flex:1">
+          ← Edit Profile
+        </button>
+        <button class="btn btn-primary" id="btn-regenerate" style="flex:1">
+          Regenerate
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <script src="popup.js"></script>
+</body>
+</html>

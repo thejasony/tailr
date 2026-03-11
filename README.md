@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Outreach Generator — Applied Intuition Recruiting
 
-## Getting Started
+A Next.js web app for Applied Intuition recruiters to generate highly personalized outreach messages from LinkedIn profiles.
 
-First, run the development server:
+## How It Works
+
+1. **Paste** a LinkedIn profile's full page text
+2. **Parse** — OpenAI GPT-4o extracts name, title, company, and location
+3. **Generate** — the backend runs 4 parallel research tasks:
+   - Glassdoor/Blind sentiment scraping via Tavily
+   - Company headcount lookup via Tavily
+   - Applied Intuition latest news via Tavily (pre-seeded with Series F facts)
+   - CEO/culture themes via YouTube Data API
+4. **Output** — GPT-4o crafts a 150–200 word personalized message with a Copy button and collapsible Research Used panel
+
+## Setup
+
+### 1. Install dependencies
+
+```bash
+cd outreach-generator
+npm install
+```
+
+### 2. Add API keys
+
+Edit `.env.local` in the project root:
+
+```env
+OPENAI_API_KEY=sk-...         # https://platform.openai.com/api-keys
+TAVILY_API_KEY=tvly-...       # https://app.tavily.com
+YOUTUBE_API_KEY=AIza...       # https://console.cloud.google.com — enable YouTube Data API v3
+```
+
+### 3. Run the dev server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## API Keys Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Key | Where to get it |
+|-----|----------------|
+| `OPENAI_API_KEY` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) — requires GPT-4o access |
+| `TAVILY_API_KEY` | [app.tavily.com](https://app.tavily.com) — free tier available |
+| `YOUTUBE_API_KEY` | [Google Cloud Console](https://console.cloud.google.com) → Enable "YouTube Data API v3" → Create credentials → API Key |
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+outreach-generator/
+├── app/
+│   ├── page.tsx                  # Main single-page UI
+│   ├── layout.tsx
+│   └── api/
+│       ├── parse-profile/
+│       │   └── route.ts          # POST /api/parse-profile — OpenAI profile extraction
+│       └── generate/
+│           └── route.ts          # POST /api/generate — research + message generation
+├── components/
+│   ├── ProfileForm.tsx           # Step 1 & 2 UI: paste, parse, review fields
+│   └── OutputSection.tsx         # Step 4 UI: message output + research panel
+├── types/
+│   └── index.ts                  # Shared TypeScript types
+└── .env.local                    # API keys (not committed)
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Message Logic Summary
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Candidate's Company Size | Lead Angle |
+|--------------------------|------------|
+| Large (5,000+) | Impact & ownership — contrast slow promo cycles |
+| Mid-Large (1,000–5,000) | Growth trajectory — $6B → $15B in 12 months |
+| Mid (500–1,000) | Growth + breadth across 4 industries |
+| Small (< 500) | Breadth of work — cars, drones, mines, trucks |
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Candidate's Title Contains | Focus |
+|----------------------------|-------|
+| CHRO / VP People / HR | Culture, financial health, Qasar's values, IPO |
+| Engineer / Software / ML / AI | Technical scope, product breadth, ship velocity |
+| Sales / GTM / BizDev | Revenue growth, new markets, IPO upside |
+| Product / PM / Program Manager | Multi-industry product problems at scale |
