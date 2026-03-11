@@ -3,6 +3,14 @@
 // Change this to your deployed proxy URL (e.g. https://tailr-proxy.fly.dev)
 const PROXY_BASE = 'https://tailr-proxy.fly.dev';
 
+// News domains for targeted searches
+const NEWS_DOMAINS = [
+  'techcrunch.com', 'bloomberg.com', 'reuters.com', 'wsj.com',
+  'fortune.com', 'forbes.com', 'venturebeat.com', 'theverge.com',
+  'wired.com', 'businessinsider.com', 'cnbc.com', 'axios.com',
+  'theatlantic.com', 'ft.com',
+];
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 const state = {
@@ -72,7 +80,7 @@ async function claudeJson(prompt, maxTokens = 512) {
 
 // ─── API: Tavily (via proxy) ──────────────────────────────────────────────────
 
-async function tavilySearch(query) {
+async function tavilySearch(query, options = {}) {
   const { teamToken } = await getKeys();
   const res = await fetch(`${PROXY_BASE}/api/proxy/tavily/search`, {
     method: 'POST',
@@ -80,13 +88,13 @@ async function tavilySearch(query) {
       'Content-Type': 'application/json',
       'X-Team-Token': teamToken || '',
     },
-    // Note: no api_key here — the proxy injects it server-side
-    body: JSON.stringify({ query, max_results: 5, search_depth: 'basic' }),
+    // Merge options (e.g. include_domains) into the body; proxy injects api_key
+    body: JSON.stringify({ query, max_results: 5, search_depth: 'basic', ...options }),
   });
   if (!res.ok) return '';
   const data = await res.json();
   return (data.results || [])
-    .map(r => `Title: ${r.title || ''}\n${r.content || ''}`)
+    .map(r => `Title: ${r.title || ''}\nURL: ${r.url || ''}\n${r.content || ''}`)
     .join('\n\n')
     .slice(0, 4000);
 }
@@ -159,7 +167,7 @@ async function extractAppliedFacts(text) {
 ${base.map(f => `- ${f}`).join('\n')}
 
 News text:
-${text.slice(0, 2000)}
+${text.slice(0, 3000)}
 
 Return ONLY a JSON array of new fact strings. If none, return [].`);
   try {
@@ -168,8 +176,12 @@ Return ONLY a JSON array of new fact strings. If none, return [].`);
   } catch { return base; }
 }
 
-async function extractCeoThemes(videos) {
-  if (!videos.length) {
+// extractCeoThemes uses both YouTube videos AND web article text for richer themes
+async function extractCeoThemes(videos, articleText = '') {
+  const videoText = videos.map(v => `[YouTube] Title: ${v.title}\nDescription: ${v.description}`).join('\n\n');
+  const combined = [videoText, articleText].filter(t => t.trim()).join('\n\n').slice(0, 5000);
+
+  if (!combined.trim()) {
     return [
       'Radical pragmatism — focus on what actually works, not what sounds good',
       'Intrinsic contrarianism — deliberately challenges conventional thinking',
@@ -177,12 +189,24 @@ async function extractCeoThemes(videos) {
       'People-first mentality — hiring exceptional people and trusting them deeply',
     ];
   }
-  const videoText = videos.map(v => `Title: ${v.title}\nDescription: ${v.description}`).join('\n\n');
-  const cleaned = await claudeJson(`Based on these YouTube videos featuring Qasar Younis (CEO of Applied Intuition), extract key cultural and leadership themes.
+  const cleaned = await claudeJson(`Based on these sources (YouTube videos and web articles) featuring Qasar Younis, CEO of Applied Intuition, extract key cultural and leadership themes he discusses.
 Return ONLY a JSON array of 3-5 theme strings (1-2 sentences each).
 
-Videos:
-${videoText}`);
+Sources:
+${combined}`);
+  try { return JSON.parse(cleaned); } catch { return []; }
+}
+
+// extractCompanyNews pulls recent news about the candidate's company for personalization
+async function extractCompanyNews(company, text) {
+  if (!text.trim()) return [];
+  const cleaned = await claudeJson(`You are analyzing recent news about "${company}".
+Extract 2-3 notable recent events: funding rounds, layoffs, acquisitions, product launches, key exec changes, reorgs, or pivots.
+Return ONLY a JSON array of brief one-sentence fact strings.
+Example: ["Announced $200M Series D in October 2024 led by Sequoia", "Laid off 12% of workforce in January 2025"]
+
+News text:
+${text.slice(0, 3000)}`);
   try { return JSON.parse(cleaned); } catch { return []; }
 }
 
@@ -201,7 +225,7 @@ function getTitleCategory(title) {
 
 async function generateMessage(profile, locationOption, research) {
   const { fullName, currentTitle, currentCompany, currentLocation } = profile;
-  const { glassdoorThemes, companySizeCategory, appliedIntuitionFacts, ceoThemes } = research;
+  const { glassdoorThemes, companySizeCategory, appliedIntuitionFacts, ceoThemes, companyNews } = research;
   const titleCategory = getTitleCategory(currentTitle);
 
   const sizeAngles = {
@@ -223,6 +247,11 @@ async function generateMessage(profile, locationOption, research) {
     ? 'Do NOT mention the candidate\'s location or office location in the message.'
     : 'Include this exact line naturally: "I couldn\'t find your exact location from LinkedIn, but this role is based in Sunnyvale, CA — wanted to be upfront about that."';
 
+  const companyNewsSection = companyNews.length
+    ? `Recent news about ${currentCompany} (optionally reference one item to show you did your homework — be factual, don't editorialize):
+${companyNews.map(n => `- ${n}`).join('\n')}`
+    : '';
+
   const system = `You are a recruiter at Applied Intuition writing a personalized outreach message to a candidate on LinkedIn.
 Write in first person, warm but direct, no corporate jargon, no bullet points, no em-dashes. Plain conversational prose. 150-200 words total.
 The message must: address candidate by first name, use the size-based lead angle, incorporate title-based personalization, weave in at least 2 Applied Intuition facts, subtly reference 1-2 CEO cultural themes, address location as instructed, end with a soft specific call to action.
@@ -240,11 +269,13 @@ ${titleAngles[titleCategory] || titleAngles.general}
 Applied Intuition facts:
 ${appliedIntuitionFacts.map(f => `- ${f}`).join('\n')}
 
-CEO cultural themes:
+CEO cultural themes (Qasar Younis):
 ${ceoThemes.map(t => `- ${t}`).join('\n')}
 
 Employee sentiment at ${currentCompany} (use as implicit contrast, never cite the source):
 ${glassdoorThemes.length ? glassdoorThemes.map(t => `- ${t}`).join('\n') : '- Use general frustrations appropriate to this company size'}
+
+${companyNewsSection}
 
 Location instruction: ${locationInstruction}`;
 
@@ -331,6 +362,16 @@ function renderOutput(result) {
         : '<div class="research-item" style="color:#475569">No themes found</div>'}
     </div>
 
+    ${r.companyNews && r.companyNews.length ? `
+    <div class="research-block">
+      <div class="research-block-title">
+        <span class="badge badge-blue">Live</span>
+        Recent News — ${r.currentCompany || 'Their Company'}
+      </div>
+      ${r.companyNews.map(n => `<div class="research-item">${n}</div>`).join('')}
+    </div>
+    ` : ''}
+
     <div class="research-block">
       <div class="research-block-title">
         <span class="badge badge-green">Pre-seeded + Live</span>
@@ -341,7 +382,7 @@ function renderOutput(result) {
 
     <div class="research-block">
       <div class="research-block-title">
-        <span style="font-size:10px;background:#dc262620;color:#f87171;border:1px solid #dc262640;padding:2px 8px;border-radius:99px;">YouTube</span>
+        <span style="font-size:10px;background:#dc262620;color:#f87171;border:1px solid #dc262640;padding:2px 8px;border-radius:99px;">YouTube + Web</span>
         CEO Culture Themes
       </div>
       ${r.ceoThemes.map(t => `<div class="research-item">${t}</div>`).join('')}
@@ -433,11 +474,24 @@ async function runGenerate() {
   setStep('step-size', 'active');
   setStep('step-news', 'active');
   setStep('step-youtube', 'active');
+  setStep('step-company-news', 'active');
 
-  const [glassdoorText, companySizeText, appliedNewsText, youtubeVideos] = await Promise.all([
+  // 7 parallel searches: existing 4 + applied news from press sites + CEO web articles + candidate company news
+  const [
+    glassdoorText,
+    companySizeText,
+    appliedNewsText,
+    appliedNewsPressText,
+    ceoArticleText,
+    companyNewsText,
+    youtubeVideos,
+  ] = await Promise.all([
     tavilySearch(`${profile.currentCompany} Glassdoor reviews Blind app employee feedback`),
     tavilySearch(`${profile.currentCompany} number of employees headcount 2025`),
-    tavilySearch('Applied Intuition 2025 news funding valuation IPO Series F'),
+    tavilySearch('Applied Intuition 2025 news funding valuation Series F autonomous vehicles defense'),
+    tavilySearch('Applied Intuition news announcement partnership contract award product launch 2024 2025', { include_domains: NEWS_DOMAINS }),
+    tavilySearch('Qasar Younis Applied Intuition interview article leadership culture values 2024 2025'),
+    tavilySearch(`${profile.currentCompany} news announcement 2024 2025`, { include_domains: NEWS_DOMAINS }),
     youtubeSearch('Qasar Younis Applied Intuition'),
   ]);
 
@@ -445,12 +499,17 @@ async function runGenerate() {
   setStep('step-size', 'done');
   setStep('step-news', 'done');
   setStep('step-youtube', 'done');
+  setStep('step-company-news', 'done');
 
-  const [glassdoorThemes, sizeResult, appliedFacts, ceoThemes] = await Promise.all([
+  // Combine both applied news sources for richer fact extraction
+  const combinedAppliedText = [appliedNewsText, appliedNewsPressText].join('\n\n').slice(0, 5000);
+
+  const [glassdoorThemes, sizeResult, appliedFacts, ceoThemes, companyNews] = await Promise.all([
     extractNegativeThemes(profile.currentCompany, glassdoorText),
     extractCompanySize(profile.currentCompany, companySizeText),
-    extractAppliedFacts(appliedNewsText),
-    extractCeoThemes(youtubeVideos),
+    extractAppliedFacts(combinedAppliedText),
+    extractCeoThemes(youtubeVideos, ceoArticleText),
+    extractCompanyNews(profile.currentCompany, companyNewsText),
   ]);
 
   setStep('step-message', 'active');
@@ -461,7 +520,9 @@ async function runGenerate() {
     companySizeCategory: sizeResult.category,
     appliedIntuitionFacts: appliedFacts,
     ceoThemes,
+    companyNews,
     youtubeVideos,
+    currentCompany: profile.currentCompany,
   };
 
   const message = await generateMessage(profile, locationOption, research);
