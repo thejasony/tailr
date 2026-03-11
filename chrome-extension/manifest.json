@@ -6,7 +6,8 @@
   "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
     "https://www.linkedin.com/*",
-    "https://tailr-proxy.fly.dev/*"
+    "https://tailr-proxy.fly.dev/*",
+    "https://hn.algolia.com/*"
   ],
   "action": {
     "default_popup": "popup.html",

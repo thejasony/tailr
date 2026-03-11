@@ -3,12 +3,18 @@
 // Change this to your deployed proxy URL (e.g. https://tailr-proxy.fly.dev)
 const PROXY_BASE = 'https://tailr-proxy.fly.dev';
 
-// News domains for targeted searches
+// Domains for targeted news searches
 const NEWS_DOMAINS = [
   'techcrunch.com', 'bloomberg.com', 'reuters.com', 'wsj.com',
   'fortune.com', 'forbes.com', 'venturebeat.com', 'theverge.com',
   'wired.com', 'businessinsider.com', 'cnbc.com', 'axios.com',
   'theatlantic.com', 'ft.com',
+];
+
+// Domains for employee review / community sentiment
+const REVIEW_DOMAINS = [
+  'glassdoor.com', 'indeed.com', 'comparably.com',
+  'levels.fyi', 'fishbowl.net', 'teamblind.com', 'blind.com',
 ];
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -88,15 +94,35 @@ async function tavilySearch(query, options = {}) {
       'Content-Type': 'application/json',
       'X-Team-Token': teamToken || '',
     },
-    // Merge options (e.g. include_domains) into the body; proxy injects api_key
     body: JSON.stringify({ query, max_results: 5, search_depth: 'basic', ...options }),
   });
   if (!res.ok) return '';
   const data = await res.json();
   return (data.results || [])
-    .map(r => `Title: ${r.title || ''}\nURL: ${r.url || ''}\n${r.content || ''}`)
+    .map(r => `[${new URL(r.url || 'https://unknown').hostname}] ${r.title || ''}\n${r.content || ''}`)
     .join('\n\n')
     .slice(0, 4000);
+}
+
+// ─── API: Hacker News (free Algolia API — no key required) ────────────────────
+
+async function hackerNewsSearch(company) {
+  try {
+    const query = encodeURIComponent(`${company}`);
+    // Search comments from the past ~2 years
+    const since = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 730;
+    const url = `https://hn.algolia.com/api/v1/search?query=${query}&tags=comment&hitsPerPage=15&numericFilters=created_at_i>${since}`;
+    const res = await fetch(url);
+    if (!res.ok) return '';
+    const data = await res.json();
+    return (data.hits || [])
+      .filter(h => h.comment_text && h.comment_text.length > 40)
+      .map(h => `[HackerNews] ${h.story_title || ''}\n${h.comment_text}`)
+      .join('\n\n')
+      .slice(0, 3000);
+  } catch {
+    return '';
+  }
 }
 
 // ─── API: YouTube (via proxy) ─────────────────────────────────────────────────
@@ -108,7 +134,6 @@ async function youtubeSearch(query) {
     q: query,
     maxResults: '3',
     type: 'video',
-    // Note: no key= here — the proxy appends it server-side
   });
   const res = await fetch(`${PROXY_BASE}/api/proxy/youtube/search?${params}`, {
     headers: { 'X-Team-Token': teamToken || '' },
@@ -123,14 +148,16 @@ async function youtubeSearch(query) {
 
 // ─── Research helpers ─────────────────────────────────────────────────────────
 
-async function extractNegativeThemes(company, text) {
-  if (!text.trim()) return [];
-  const cleaned = await claudeJson(`You are analyzing employee review data for "${company}" from Glassdoor and Blind.
-Extract the top 3-5 recurring NEGATIVE themes employees mention.
+async function extractNegativeThemes(company, combinedText) {
+  if (!combinedText.trim()) return [];
+  const cleaned = await claudeJson(`You are analyzing employee sentiment about "${company}" from multiple sources: Glassdoor, Indeed, Comparably, Levels.fyi, Fishbowl, Blind, Reddit, and Hacker News.
+Extract the top 4-6 recurring NEGATIVE themes employees mention across these sources.
+Prioritize themes that appear across multiple sources and platforms.
 Return ONLY a JSON array of short theme strings (1-2 sentences each).
+Example: ["Slow promotion cycles with unclear criteria", "Management decisions feel top-down with little engineer input"]
 
-Text:
-${text.slice(0, 3000)}`);
+Combined text from all sources:
+${combinedText.slice(0, 5000)}`);
   try { return JSON.parse(cleaned); } catch { return []; }
 }
 
@@ -176,7 +203,7 @@ Return ONLY a JSON array of new fact strings. If none, return [].`);
   } catch { return base; }
 }
 
-// extractCeoThemes uses both YouTube videos AND web article text for richer themes
+// extractCeoThemes uses YouTube videos AND web article text for richer themes
 async function extractCeoThemes(videos, articleText = '') {
   const videoText = videos.map(v => `[YouTube] Title: ${v.title}\nDescription: ${v.description}`).join('\n\n');
   const combined = [videoText, articleText].filter(t => t.trim()).join('\n\n').slice(0, 5000);
@@ -229,14 +256,14 @@ async function generateMessage(profile, locationOption, research) {
   const titleCategory = getTitleCategory(currentTitle);
 
   const sizeAngles = {
-    large: `Lead with impact and ownership. The candidate is at a large company (${currentCompany}). Reference—without naming Glassdoor—the frustration about slow promotion cycles and difficulty seeing direct impact. Position Applied Intuition as lean enough that work ships fast and people notice.`,
+    large: `Lead with impact and ownership. The candidate is at a large company (${currentCompany}). Reference—without naming any review site—the frustration about slow promotion cycles and difficulty seeing direct impact. Position Applied Intuition as lean enough that work ships fast and people notice.`,
     'mid-large': `Lead with growth trajectory. The candidate is at a mid-large company of similar scale. Reference Applied doubling valuation in one year ($6B → $15B). Challenge them: are they seeing this kind of momentum where they are?`,
-    mid: `Lead with growth trajectory and breadth. Position Applied Intuition as a rare company at this scale that is growing exponentially AND operating across multiple industries (Automotive, Defense, Trucking, Construction/Mining).`,
+    mid: `Lead with growth trajectory and breadth. Position Applied Intuition as a rare company at this scale growing exponentially AND operating across multiple industries (Automotive, Defense, Trucking, Construction/Mining).`,
     small: `Lead with breadth of work and industry exposure. The candidate is at a small company with likely deep specialization. Applied spans Automotive, Defense, Trucking, and Construction/Mining — engineers here say they've never learned faster.`,
   };
 
   const titleAngles = {
-    hr_exec: 'Focus heavily on Applied Intuition\'s culture and financial health. Highlight valuation growth, caliber of investors (BlackRock, Kleiner Perkins), IPO trajectory, and Qasar\'s publicly stated values around building a people-first, high-ownership culture.',
+    hr_exec: 'Focus on Applied Intuition\'s culture and financial health. Highlight valuation growth, caliber of investors (BlackRock, Kleiner Perkins), IPO trajectory, and Qasar\'s publicly stated values around building a people-first, high-ownership culture.',
     engineer: 'Focus on technical scope, product breadth across 4 industries, and the speed at which engineers ship. Highlight the rare opportunity to work on autonomy across Automotive, Defense, Trucking, and Construction.',
     sales: 'Focus on revenue growth, expansion into new markets (Defense, Trucking, Construction/Mining), and the IPO opportunity to participate in the upside.',
     product: 'Focus on how Applied\'s multiple industries create unique, high-stakes product problems at scale that PMs rarely get access to.',
@@ -248,14 +275,14 @@ async function generateMessage(profile, locationOption, research) {
     : 'Include this exact line naturally: "I couldn\'t find your exact location from LinkedIn, but this role is based in Sunnyvale, CA — wanted to be upfront about that."';
 
   const companyNewsSection = companyNews.length
-    ? `Recent news about ${currentCompany} (optionally reference one item to show you did your homework — be factual, don't editorialize):
+    ? `Recent news about ${currentCompany} (optionally weave in one item naturally to show you did your homework):
 ${companyNews.map(n => `- ${n}`).join('\n')}`
     : '';
 
   const system = `You are a recruiter at Applied Intuition writing a personalized outreach message to a candidate on LinkedIn.
 Write in first person, warm but direct, no corporate jargon, no bullet points, no em-dashes. Plain conversational prose. 150-200 words total.
 The message must: address candidate by first name, use the size-based lead angle, incorporate title-based personalization, weave in at least 2 Applied Intuition facts, subtly reference 1-2 CEO cultural themes, address location as instructed, end with a soft specific call to action.
-Do NOT mention Glassdoor or Blind by name.
+Do NOT mention Glassdoor, Blind, Reddit, Hacker News, Fishbowl, or any review site by name.
 Output ONLY the message text. No subject line. No "Hi [Name]," header. Start directly with the opener.`;
 
   const user = `Candidate: ${fullName}, ${currentTitle} at ${currentCompany}, ${currentLocation || 'unknown location'}
@@ -272,7 +299,7 @@ ${appliedIntuitionFacts.map(f => `- ${f}`).join('\n')}
 CEO cultural themes (Qasar Younis):
 ${ceoThemes.map(t => `- ${t}`).join('\n')}
 
-Employee sentiment at ${currentCompany} (use as implicit contrast, never cite the source):
+Employee sentiment at ${currentCompany} across Glassdoor, Levels.fyi, Reddit, HN, and Fishbowl (use as implicit contrast — never cite sources):
 ${glassdoorThemes.length ? glassdoorThemes.map(t => `- ${t}`).join('\n') : '- Use general frustrations appropriate to this company size'}
 
 ${companyNewsSection}
@@ -355,7 +382,7 @@ function renderOutput(result) {
     <div class="research-block">
       <div class="research-block-title">
         <span class="badge badge-amber">Internal only</span>
-        Employee Sentiment Themes
+        Employee Sentiment (Glassdoor · Levels · Fishbowl · Reddit · HN)
       </div>
       ${r.glassdoorThemes.length
         ? r.glassdoorThemes.map(t => `<div class="research-item">${t}</div>`).join('')
@@ -476,9 +503,11 @@ async function runGenerate() {
   setStep('step-youtube', 'active');
   setStep('step-company-news', 'active');
 
-  // 7 parallel searches: existing 4 + applied news from press sites + CEO web articles + candidate company news
+  // 9 parallel searches — all run concurrently
   const [
-    glassdoorText,
+    reviewSiteText,     // Glassdoor, Indeed, Comparably, Levels.fyi, Fishbowl, Blind
+    redditText,         // Reddit threads about the company
+    hnText,             // Hacker News comments (free Algolia API)
     companySizeText,
     appliedNewsText,
     appliedNewsPressText,
@@ -486,7 +515,9 @@ async function runGenerate() {
     companyNewsText,
     youtubeVideos,
   ] = await Promise.all([
-    tavilySearch(`${profile.currentCompany} Glassdoor reviews Blind app employee feedback`),
+    tavilySearch(`${profile.currentCompany} reviews culture compensation work life balance employee experience`, { include_domains: REVIEW_DOMAINS }),
+    tavilySearch(`${profile.currentCompany} working at culture pros cons experience`, { include_domains: ['reddit.com'] }),
+    hackerNewsSearch(profile.currentCompany),
     tavilySearch(`${profile.currentCompany} number of employees headcount 2025`),
     tavilySearch('Applied Intuition 2025 news funding valuation Series F autonomous vehicles defense'),
     tavilySearch('Applied Intuition news announcement partnership contract award product launch 2024 2025', { include_domains: NEWS_DOMAINS }),
@@ -501,11 +532,15 @@ async function runGenerate() {
   setStep('step-youtube', 'done');
   setStep('step-company-news', 'done');
 
-  // Combine both applied news sources for richer fact extraction
-  const combinedAppliedText = [appliedNewsText, appliedNewsPressText].join('\n\n').slice(0, 5000);
+  // Combine all sentiment sources for richer theme extraction
+  const combinedSentimentText = [reviewSiteText, redditText, hnText]
+    .filter(Boolean).join('\n\n').slice(0, 6000);
+
+  const combinedAppliedText = [appliedNewsText, appliedNewsPressText]
+    .join('\n\n').slice(0, 5000);
 
   const [glassdoorThemes, sizeResult, appliedFacts, ceoThemes, companyNews] = await Promise.all([
-    extractNegativeThemes(profile.currentCompany, glassdoorText),
+    extractNegativeThemes(profile.currentCompany, combinedSentimentText),
     extractCompanySize(profile.currentCompany, companySizeText),
     extractAppliedFacts(combinedAppliedText),
     extractCeoThemes(youtubeVideos, ceoArticleText),
